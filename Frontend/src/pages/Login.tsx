@@ -29,7 +29,7 @@ const Login = () => {
           <div className="w-10 h-10 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center">
             <GitBranch className="w-5 h-5 text-primary" />
           </div>
-          <span className="text-2xl font-display font-bold text-foreground">ContextGraph</span>
+          <span className="text-2xl font-display font-bold text-foreground">Contextify</span>
         </div>
 
         <p className="text-muted-foreground text-sm mb-10">

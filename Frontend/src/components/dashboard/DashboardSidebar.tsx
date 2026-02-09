@@ -4,9 +4,9 @@ import {
   ChevronDown,
   LayoutGrid,
   AlertTriangle,
-  Settings,
   Flag,
   AlertOctagon,
+  ArrowLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -26,7 +26,6 @@ interface DashboardSidebarProps {
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "findings", label: "Findings", icon: AlertTriangle },
-  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 const DashboardSidebar = ({
@@ -53,12 +52,14 @@ const DashboardSidebar = ({
     <aside className="w-60 border-r border-border bg-card flex flex-col shrink-0">
       {/* Repo info */}
       <div className="p-4 border-b border-border">
+
         <div className="flex items-center gap-2 mb-2">
           <GitBranch className="w-3.5 h-3.5 text-primary" />
           <span className="text-sm font-medium font-mono truncate">
             acme/backend-api
           </span>
         </div>
+
         <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
           <span className="px-1.5 py-0.5 rounded bg-muted text-xs">main</span>
           <ChevronDown className="w-3 h-3" />
@@ -94,10 +95,7 @@ const DashboardSidebar = ({
             <Flag className="w-3.5 h-3.5" />
             Flagged files
           </div>
-          <Switch
-            checked={showFlagged}
-            onCheckedChange={onShowFlaggedChange}
-          />
+          <Switch checked={showFlagged} onCheckedChange={onShowFlaggedChange} />
         </label>
 
         <label className="flex items-center justify-between cursor-pointer">

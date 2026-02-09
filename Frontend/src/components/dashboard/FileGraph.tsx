@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ZoomIn, ZoomOut, RotateCcw, Box, GitFork, ChevronRight, ChevronDown } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GraphLegend from "./GraphLegend";
 import { mockEdges, severityCounts } from "@/data/mockData";
@@ -31,15 +31,15 @@ interface ClusterDef {
 }
 
 const clusterDefs: ClusterDef[] = [
-  { id: "root",            label: "/ (root)",          col: 0, row: 0 },
-  { id: "src",             label: "src/",              col: 1, row: 0 },
-  { id: "src/middleware",   label: "src/middleware/",   col: 0, row: 1 },
-  { id: "src/auth",        label: "src/auth/",         col: 1, row: 1 },
-  { id: "src/services",    label: "src/services/",     col: 2, row: 1 },
-  { id: "tests",           label: "tests/",            col: 3, row: 1 },
-  { id: "src/api",         label: "src/api/",          col: 0, row: 2 },
-  { id: "src/db",          label: "src/db/",           col: 1, row: 2 },
-  { id: "src/utils",       label: "src/utils/",        col: 2, row: 2 },
+  { id: "root", label: "/ (root)", col: 0, row: 0 },
+  { id: "src", label: "src/", col: 1, row: 0 },
+  { id: "src/middleware", label: "src/middleware/", col: 0, row: 1 },
+  { id: "src/auth", label: "src/auth/", col: 1, row: 1 },
+  { id: "src/services", label: "src/services/", col: 2, row: 1 },
+  { id: "tests", label: "tests/", col: 3, row: 1 },
+  { id: "src/api", label: "src/api/", col: 0, row: 2 },
+  { id: "src/db", label: "src/db/", col: 1, row: 2 },
+  { id: "src/utils", label: "src/utils/", col: 2, row: 2 },
 ];
 
 const CLUSTER_W = 230;
@@ -63,7 +63,10 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
   }
 
   // Compute cluster heights & positions
-  const clusterBounds = new Map<string, { x: number; y: number; w: number; h: number }>();
+  const clusterBounds = new Map<
+    string,
+    { x: number; y: number; w: number; h: number }
+  >();
   const nodePositions = new Map<string, { x: number; y: number }>();
 
   // First pass: compute heights per row to align
@@ -72,7 +75,15 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
   for (const cd of clusterDefs) {
     const members = groups.get(cd.id) || [];
     const collapsed = collapsedClusters.has(cd.id);
-    const cols = Math.min(members.length, Math.max(1, Math.floor((CLUSTER_W - CLUSTER_PAD_X * 2 + NODE_SPACING_X) / NODE_SPACING_X)));
+    const cols = Math.min(
+      members.length,
+      Math.max(
+        1,
+        Math.floor(
+          (CLUSTER_W - CLUSTER_PAD_X * 2 + NODE_SPACING_X) / NODE_SPACING_X
+        )
+      )
+    );
     const rows = collapsed ? 0 : Math.ceil(members.length / cols);
     const h = collapsed
       ? CLUSTER_PAD_TOP + 8
@@ -97,7 +108,15 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
 
     const cx = 20 + cd.col * (CLUSTER_W + CLUSTER_GAP_X);
     const cy = rowY.get(cd.row)!;
-    const cols = Math.min(members.length, Math.max(1, Math.floor((CLUSTER_W - CLUSTER_PAD_X * 2 + NODE_SPACING_X) / NODE_SPACING_X)));
+    const cols = Math.min(
+      members.length,
+      Math.max(
+        1,
+        Math.floor(
+          (CLUSTER_W - CLUSTER_PAD_X * 2 + NODE_SPACING_X) / NODE_SPACING_X
+        )
+      )
+    );
     const rows = collapsed ? 0 : Math.ceil(members.length / cols);
     const h = collapsed
       ? CLUSTER_PAD_TOP + 8
@@ -126,8 +145,9 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
 const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
   const [zoom, setZoom] = useState(1);
   const [hoveredNode, setHoveredNode] = useState<FileNode | null>(null);
-  const [viewMode, setViewMode] = useState<"modules" | "functions">("modules");
-  const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
+  const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(
+    new Set()
+  );
 
   const toggleCluster = useCallback((id: string) => {
     setCollapsedClusters(prev => {
@@ -155,31 +175,40 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
     <div className="w-full h-full relative graph-bg">
       {/* Top controls */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5">
-        <Button variant="outline" size="icon" className="w-8 h-8 bg-card/80 backdrop-blur" onClick={() => handleZoom(1)}>
+        <Button
+          variant="outline"
+          size="icon"
+          className="w-8 h-8 bg-card/80 backdrop-blur"
+          onClick={() => handleZoom(1)}
+        >
           <ZoomIn className="w-3.5 h-3.5" />
         </Button>
-        <Button variant="outline" size="icon" className="w-8 h-8 bg-card/80 backdrop-blur" onClick={() => handleZoom(-1)}>
+        <Button
+          variant="outline"
+          size="icon"
+          className="w-8 h-8 bg-card/80 backdrop-blur"
+          onClick={() => handleZoom(-1)}
+        >
           <ZoomOut className="w-3.5 h-3.5" />
         </Button>
-        <Button variant="outline" size="icon" className="w-8 h-8 bg-card/80 backdrop-blur" onClick={() => setZoom(1)}>
+        <Button
+          variant="outline"
+          size="icon"
+          className="w-8 h-8 bg-card/80 backdrop-blur"
+          onClick={() => setZoom(1)}
+        >
           <RotateCcw className="w-3.5 h-3.5" />
         </Button>
+
+        {/* Modules is now fixed (not toggle-able) */}
         <div className="w-px h-6 bg-border mx-1" />
         <Button
-          variant={viewMode === "modules" ? "default" : "outline"}
+          variant="default"
           size="sm"
-          className="h-8 text-xs gap-1.5 bg-card/80 backdrop-blur"
-          onClick={() => setViewMode("modules")}
+          className="h-8 text-xs gap-1.5 bg-card/80 backdrop-blur cursor-default"
+          type="button"
         >
-          <Box className="w-3 h-3" /> Modules
-        </Button>
-        <Button
-          variant={viewMode === "functions" ? "default" : "outline"}
-          size="sm"
-          className="h-8 text-xs gap-1.5 bg-card/80 backdrop-blur"
-          onClick={() => setViewMode("functions")}
-        >
-          <GitFork className="w-3 h-3" /> Functions
+          Modules
         </Button>
       </div>
 
@@ -187,10 +216,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
       <GraphLegend counts={severityCounts} />
 
       {/* Graph canvas */}
-      <div
-        className="w-full h-full overflow-auto"
-        style={{ touchAction: "none" }}
-      >
+      <div className="w-full h-full overflow-auto" style={{ touchAction: "none" }}>
         <svg
           width={svgW * zoom}
           height={svgH * zoom}
@@ -199,14 +225,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
         >
           {/* Arrowhead marker */}
           <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="8"
-              markerHeight="6"
-              refX="8"
-              refY="3"
-              orient="auto"
-            >
+            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
               <polygon points="0 0, 8 3, 0 6" fill="hsl(211, 30%, 35%)" />
             </marker>
             <marker
@@ -227,6 +246,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
             if (!bounds) return null;
             const collapsed = collapsedClusters.has(cd.id);
             const memberCount = (groups.get(cd.id) || []).length;
+
             return (
               <g key={cd.id}>
                 <rect
@@ -240,10 +260,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
                   strokeWidth={1}
                 />
                 {/* Cluster header */}
-                <g
-                  className="cursor-pointer"
-                  onClick={() => toggleCluster(cd.id)}
-                >
+                <g className="cursor-pointer" onClick={() => toggleCluster(cd.id)}>
                   <rect
                     x={bounds.x}
                     y={bounds.y}
@@ -262,7 +279,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
                       fill="hsl(211, 50%, 13%)"
                     />
                   )}
-                  {/* Chevron icon */}
+
                   <text
                     x={bounds.x + 12}
                     y={bounds.y + 18}
@@ -304,7 +321,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
             const isHighlighted = hoveredNode
               ? edge.from === hoveredNode.id || edge.to === hoveredNode.id
               : false;
-            // Shorten edge to stop at node border
+
             const dx = to.x - from.x;
             const dy = to.y - from.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -315,6 +332,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
             const sy = from.y + ny * NODE_R;
             const ex = to.x - nx * (NODE_R + 8);
             const ey = to.y - ny * (NODE_R + 8);
+
             return (
               <line
                 key={i}
@@ -337,6 +355,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
             if (!pos) return null;
             const isSelected = selectedNodeId === node.id;
             const isHovered = hoveredNode?.id === node.id;
+
             return (
               <g
                 key={node.id}
@@ -345,7 +364,6 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
                 onMouseLeave={() => setHoveredNode(null)}
                 className="cursor-pointer"
               >
-                {/* Glow ring */}
                 {(isSelected || isHovered) && (
                   <circle
                     cx={pos.x}
@@ -355,7 +373,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
                     opacity={0.15}
                   />
                 )}
-                {/* Main circle */}
+
                 <circle
                   cx={pos.x}
                   cy={pos.y}
@@ -366,7 +384,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
                   strokeWidth={isSelected ? 2 : 0}
                   style={{ transition: "opacity 0.15s" }}
                 />
-                {/* Critical pulse */}
+
                 {node.severity === "purple" && (
                   <circle
                     cx={pos.x}
@@ -379,7 +397,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
                     className="animate-pulse"
                   />
                 )}
-                {/* Label */}
+
                 <text
                   x={pos.x}
                   y={pos.y + NODE_R + 14}

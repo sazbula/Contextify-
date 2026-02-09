@@ -55,7 +55,7 @@ const Findings = () => {
         </Button>
         <div className="flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-primary" />
-          <span className="font-display font-semibold text-sm">ContextGraph</span>
+          <span className="font-display font-semibold text-sm">Contextify</span>
         </div>
         <div className="h-4 w-px bg-border" />
         <span className="text-sm text-muted-foreground">Findings</span>

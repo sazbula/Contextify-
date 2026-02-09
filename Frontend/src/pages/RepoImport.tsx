@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { GitBranch, ArrowLeft, Lock, Loader2, Check, Copy, ChevronRight } from "lucide-react";
+import { Lock, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useNavigate } from "react-router-dom";
+import AppHeader from "@/components/layout/AppHeader";
 
 const steps = [
   { label: "Cloning", description: "Fetching repository..." },
@@ -37,42 +38,23 @@ const RepoImport = () => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     stepDurations.forEach((duration, i) => {
       totalElapsed += duration;
-      timers.push(setTimeout(() => {
-        setCurrentStep(i + 1);
-        setProgress(((i + 1) / steps.length) * 100);
-        if (i === steps.length - 1) {
-          setTimeout(() => navigate("/dashboard"), 800);
-        }
-      }, totalElapsed));
+      timers.push(
+        setTimeout(() => {
+          setCurrentStep(i + 1);
+          setProgress(((i + 1) / steps.length) * 100);
+          if (i === steps.length - 1) {
+            setTimeout(() => navigate("/dashboard"), 800);
+          }
+        }, totalElapsed)
+      );
     });
 
-    // Animate progress smoothly
-    const progressInterval = setInterval(() => {
-      setProgress(p => {
-        const target = ((currentStep + 1) / steps.length) * 100;
-        if (p >= target) return p;
-        return Math.min(p + 0.5, target);
-      });
-    }, 50);
-
-    return () => {
-      timers.forEach(clearTimeout);
-      clearInterval(progressInterval);
-    };
+    return () => timers.forEach(clearTimeout);
   }, [analyzing]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
-      <header className="border-b border-border px-6 py-4 flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div className="flex items-center gap-2">
-          <GitBranch className="w-4 h-4 text-primary" />
-          <span className="font-display font-semibold">ContextGraph</span>
-        </div>
-      </header>
+      <AppHeader backTo="/" backAriaLabel="Back to login" />
 
       <div className="flex-1 flex items-center justify-center p-6">
         <motion.div
@@ -82,23 +64,20 @@ const RepoImport = () => {
         >
           {!analyzing ? (
             <>
-              <h1 className="text-2xl font-display font-bold text-foreground mb-2">Open a repository</h1>
+              <h1 className="text-2xl font-display font-bold mb-2">
+                Open a repository
+              </h1>
               <p className="text-sm text-muted-foreground mb-8">
                 Paste a GitHub repo URL. We clone and analyze it securely.
               </p>
 
               <div className="space-y-4">
-                <div>
-                  <Input
-                    placeholder="https://github.com/org/repo"
-                    value={url}
-                    onChange={e => setUrl(e.target.value)}
-                    className="h-12 font-mono text-sm bg-card border-border"
-                  />
-                  {url && !isValidUrl && (
-                    <p className="text-xs text-destructive mt-1.5">Enter a valid GitHub URL</p>
-                  )}
-                </div>
+                <Input
+                  placeholder="https://github.com/org/repo"
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                  className="h-12 font-mono"
+                />
 
                 <div className="flex items-center justify-between p-3 rounded-lg bg-card border border-border">
                   <div className="flex items-center gap-2">
@@ -107,16 +86,11 @@ const RepoImport = () => {
                   </div>
                   <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
                 </div>
-                {isPrivate && (
-                  <p className="text-xs text-muted-foreground pl-1">
-                    Requires additional GitHub permissions.
-                  </p>
-                )}
 
                 <Button
                   variant="glow"
                   size="lg"
-                  className="w-full h-12 font-medium"
+                  className="w-full h-12"
                   disabled={!isValidUrl}
                   onClick={startAnalysis}
                 >
@@ -125,58 +99,42 @@ const RepoImport = () => {
               </div>
             </>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-display font-semibold text-foreground mb-1">Analyzing repository</h2>
+                <h2 className="text-xl font-semibold mb-1">
+                  Analyzing repository
+                </h2>
                 <p className="text-sm text-muted-foreground font-mono">{url}</p>
               </div>
 
-              {/* Progress bar */}
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: "hsl(var(--primary))" }}
-                  initial={{ width: 0 }}
+                  className="h-full bg-primary"
                   animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3 }}
                 />
               </div>
 
-              {/* Steps */}
               <div className="space-y-3">
-                {steps.map((step, i) => {
-                  const isComplete = currentStep > i;
-                  const isCurrent = currentStep === i;
-                  return (
-                    <motion.div
-                      key={step.label}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.1 }}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                        isComplete ? "border-severity-green/30 bg-severity-green/5" :
-                        isCurrent ? "border-primary/40 bg-primary/5" :
-                        "border-border bg-card"
-                      }`}
-                    >
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
-                        isComplete ? "bg-severity-green/20 text-severity-green" :
-                        isCurrent ? "bg-primary/20 text-primary" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {isComplete ? <Check className="w-3.5 h-3.5" /> :
-                         isCurrent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> :
-                         <span>{i + 1}</span>}
-                      </div>
-                      <div>
-                        <p className={`text-sm font-medium ${isComplete || isCurrent ? "text-foreground" : "text-muted-foreground"}`}>
-                          {step.label}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{step.description}</p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
+                {steps.map((step, i) => (
+                  <div
+                    key={step.label}
+                    className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                  >
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs bg-muted">
+                      {currentStep > i ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        i + 1
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{step.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
