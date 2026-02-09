@@ -1,6 +1,7 @@
-import { GitBranch, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import logo from "@/assets/contextify-logo.png";
 
 interface AppHeaderProps {
   backTo: string;
@@ -21,10 +22,12 @@ const AppHeader = ({ backTo, backAriaLabel = "Back" }: AppHeaderProps) => {
         <ArrowLeft className="w-4 h-4" />
       </Button>
 
-      <div className="flex items-center gap-2">
-        <GitBranch className="w-4 h-4 text-primary" />
-        <span className="font-display font-semibold">Contextify</span>
-      </div>
+      <img
+        src={logo}
+        alt="Contextify"
+        className="h-8 scale-[4] origin-left object-contain select-none"
+        draggable={false}
+      />
     </header>
   );
 };
