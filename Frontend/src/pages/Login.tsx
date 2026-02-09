@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
-import { GitBranch, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import logo from "@/assets/contextify-logo.png";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -9,29 +10,39 @@ const Login = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background relative overflow-hidden">
       {/* Background grid effect */}
-      <div className="absolute inset-0 opacity-[0.03]" style={{
-        backgroundImage: `radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)`,
-        backgroundSize: "40px 40px",
-      }} />
-      
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)`,
+          backgroundSize: "40px 40px",
+        }}
+      />
+
       {/* Glow orbs */}
-      <div className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full opacity-10 blur-[100px]" style={{ background: "hsl(var(--primary))" }} />
-      <div className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full opacity-5 blur-[80px]" style={{ background: "hsl(200, 100%, 60%)" }} />
-      
+      <div
+        className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full opacity-10 blur-[100px]"
+        style={{ background: "hsl(var(--primary))" }}
+      />
+      <div
+        className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full opacity-5 blur-[80px]"
+        style={{ background: "hsl(200, 100%, 60%)" }}
+      />
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="relative z-10 flex flex-col items-center"
       >
-        {/* Logo */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center">
-            <GitBranch className="w-5 h-5 text-primary" />
-          </div>
-          <span className="text-2xl font-display font-bold text-foreground">Contextify</span>
-        </div>
-
+      {/* Logo */}
+      <div className="mb-6 h-20 flex items-center justify-center">
+        <img
+          src={logo}
+          alt="Contextify"
+          draggable={false}
+          className="h-8 scale-[7] origin-center object-contain select-none"
+        />
+      </div>
         <p className="text-muted-foreground text-sm mb-10">
           Analyze massive codebases without context loss.
         </p>
