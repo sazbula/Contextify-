@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, FileCode, ExternalLink, GitPullRequest, Lightbulb, ChevronRight, ArrowLeft } from "lucide-react";
+import { X, FileCode, ExternalLink, GitPullRequest, Lightbulb, ChevronRight, ArrowLeft, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { FileNode } from "@/data/mockData";
 import type { Issue } from "@/data/mockData";
 import type { Severity } from "@/data/types";
 import CodeViewer from "./CodeViewer";
+import { generateFileInsights } from "@/services/api";
 
 interface FileDetailsDrawerProps {
   node: FileNode | null;
@@ -32,8 +33,28 @@ const typeIcons: Record<string, string> = {
 
 const FileDetailsDrawer = ({ node, issues, onClose }: FileDetailsDrawerProps) => {
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+  const [insights, setInsights] = useState<string | null>(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   if (!node) return null;
+
+  const handleGenerateInsights = async () => {
+    const repoName = localStorage.getItem("currentRepo");
+    if (!repoName) return;
+
+    setLoadingInsights(true);
+    setInsightsError(null);
+
+    try {
+      const result = await generateFileInsights(repoName, node.path);
+      setInsights(result.insights);
+    } catch (error) {
+      setInsightsError(error instanceof Error ? error.message : "Failed to generate insights");
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
 
   const issuesByType = issues.reduce((acc, issue) => {
     if (!acc[issue.type]) acc[issue.type] = [];
@@ -149,6 +170,43 @@ const FileDetailsDrawer = ({ node, issues, onClose }: FileDetailsDrawerProps) =>
           ) : (
             /* Issue list grouped by type */
             <div className="p-4 space-y-4">
+              {/* AI Insights Section */}
+              <div className="mb-4">
+                {!insights ? (
+                  <Button
+                    onClick={handleGenerateInsights}
+                    disabled={loadingInsights}
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {loadingInsights ? "Generating Insights..." : "Generate AI Insights"}
+                  </Button>
+                ) : (
+                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Sparkles className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-xs font-medium text-primary">AI Insights & Advice</span>
+                      <Button
+                        onClick={() => setInsights(null)}
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto h-5 px-1.5 text-xs"
+                      >
+                        Close
+                      </Button>
+                    </div>
+                    <div className="text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed">
+                      {insights}
+                    </div>
+                  </div>
+                )}
+                {insightsError && (
+                  <p className="text-xs text-destructive mt-2">{insightsError}</p>
+                )}
+              </div>
+
               {issues.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">No issues found</p>

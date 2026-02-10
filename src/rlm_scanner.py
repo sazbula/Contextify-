@@ -11,6 +11,7 @@ Features:
 """
 import os
 import json
+import time
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
@@ -34,6 +35,15 @@ Input: context["files"] (dict of filepath: code)
 
 Task: Use llm_query_batched to analyze files, then output ONLY the JSON array.
 
+Severity levels (use ONLY these exact strings):
+- "none"     — No issues found in the file
+- "low"      — Minor style or cosmetic issues
+- "medium"   — Potential bugs or moderate code smells
+- "high"     — Likely bugs, security risks, or serious design flaws
+- "critical" — Confirmed vulnerabilities, data loss risks, or crashes
+
+Description: max 5 words. If unsure, use "Manual review recommended".
+
 ```python
 import json
 
@@ -42,12 +52,16 @@ prompts = []
 
 for fpath, code in files.items():
     safe_path = fpath.replace('\\\\', '/')
-    prompts.append(f'''Find issues in this code. Return JSON array ONLY, no markdown, no explanations:
+    prompts.append(f\'\'\'Find issues in this code. Return JSON array ONLY, no markdown, no explanations.
+Use ONLY these severities: "none", "low", "medium", "high", "critical".
+If unsure about the description, use "Manual review recommended".
+
+Example format:
 [{{"file":"{safe_path}","severity":"high","description":"5 words max"}}]
 
 {code}
 
-JSON array only.''')
+JSON array only.\'\'\')
 
 responses = llm_query_batched(prompts)
 
@@ -219,6 +233,15 @@ class EnhancedRLMScanner:
         print("\n" + "="*70)
         print("ENHANCED RLM REPOSITORY SCANNER")
         print("="*70)
+        print(f"Directory: {directory}")
+        dir_path = Path(directory)
+        print(f"Directory exists: {dir_path.exists()}")
+        if dir_path.exists():
+            all_files = list(dir_path.rglob("*"))
+            file_count = sum(1 for f in all_files if f.is_file())
+            print(f"Total files in directory: {file_count}")
+        print(f"Repo name: {repo_name}")
+        print(f"Skip graph building: {skip_graph_building}")
 
         # Build graph using existing GraphBuilder (unless skipped)
         if not skip_graph_building:
@@ -247,12 +270,19 @@ class EnhancedRLMScanner:
                 return {"error": "No files found"}
         else:
             print("\n[USING EXISTING GRAPH]")
-            # Load existing graph for analysis
+            # When skip_graph_building=True, graph was already built by pipeline
+            # Rebuild it here for context (needed for RLM analysis)
             builder = GraphBuilder(directory)
             graph = builder.build()
             stats = builder.get_stats()
             print(f"   Nodes: {stats['nodes']}, Edges: {stats['edges']}")
             print(f"   Languages: {stats.get('languages', {})}")
+            
+            # If graph rebuild found 0 nodes, emit warning but continue
+            # (The original graph might exist with different path structure)
+            if stats['nodes'] == 0:
+                print("\n[WARNING] Graph rebuild found 0 nodes - path might be incorrect")
+                print(f"          Attempting to collect Python files anyway from: {directory}")
 
         # Collect Python files for RLM analysis
         print("\n[COLLECTING PYTHON FILES]")
@@ -271,7 +301,24 @@ class EnhancedRLMScanner:
 
         if not files:
             print("\n[WARNING] No Python files found for RLM analysis!")
-            print("(Graph was built with other languages)")
+            
+            # If both graph has 0 nodes AND no Python files, return error
+            if stats['nodes'] == 0:
+                print("[ERROR] No source files found at all - check repository path")
+                return {
+                    "error": "No source files found",
+                    "directory": str(directory),
+                    "files_analyzed": 0,
+                    "issues_found": 0
+                }
+            
+            print("(Graph was built with other languages, but no Python files to analyze)")
+            return {
+                "files_analyzed": 0,
+                "issues_found": 0,
+                "execution_time": 0,
+                "message": "No Python files found for RLM analysis"
+            }
 
         # Convert graph to JSON format for RLM context
         # Create a simplified graph representation
@@ -313,70 +360,96 @@ class EnhancedRLMScanner:
             # Direct and specific query
             query = """Output ONLY the final JSON array. No explanations. No markdown. Just the raw JSON array of issues."""
 
-            print(f"Running RLM...")
-            result = self.rlm.completion(prompt=context, root_prompt=query)
-            total_execution_time += result.execution_time
-
-            # Show what RLM returned
-            print(f"\n{'='*70}")
-            print(f"RLM RETURNED (as Python variable):")
-            print(f"{'='*70}")
-            print(f"Type: {type(result.response)}")
-            print(f"\nValue:")
-            print(repr(result.response))
-            print(f"{'='*70}\n")
-
-            # Parse response
+            # Retry loop: up to 3 attempts with 10s delay between retries
+            MAX_RETRIES = 3
             batch_issues = []
-            if isinstance(result.response, list):
-                batch_issues = result.response
-                print(f"✓ Already a list!")
-            elif isinstance(result.response, str):
-                response_str = result.response.strip()
+            batch_succeeded = False
 
-                # Check if response has FINAL_RESULT markers
-                if "=== FINAL_RESULT ===" in response_str and "=== END_RESULT ===" in response_str:
-                    try:
-                        start = response_str.index("=== FINAL_RESULT ===") + len("=== FINAL_RESULT ===")
-                        end = response_str.index("=== END_RESULT ===")
-                        json_str = response_str[start:end].strip()
-                        batch_issues = json.loads(json_str)
-                        print(f"✓ Extracted from FINAL_RESULT markers")
-                    except Exception as e:
-                        print(f"✗ Failed to extract from markers: {e}")
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    print(f"Running RLM (attempt {attempt}/{MAX_RETRIES})...")
+                    result = self.rlm.completion(prompt=context, root_prompt=query)
+                    total_execution_time += result.execution_time
 
-                # Try to extract JSON from markdown code blocks
-                if not batch_issues and "```json" in response_str:
-                    try:
-                        import re
-                        # Find JSON within ```json ... ``` blocks
-                        json_match = re.search(r'```json\s*\n([\s\S]*?)\n```', response_str)
-                        if json_match:
-                            json_str = json_match.group(1).strip()
-                            batch_issues = json.loads(json_str)
-                            print(f"✓ Extracted JSON from markdown code block")
-                    except Exception as e:
-                        print(f"✗ Failed to extract from markdown: {e}")
+                    # Show what RLM returned
+                    print(f"\n{'='*70}")
+                    print(f"RLM RETURNED (as Python variable):")
+                    print(f"{'='*70}")
+                    print(f"Type: {type(result.response)}")
+                    print(f"\nValue:")
+                    print(repr(result.response))
+                    print(f"{'='*70}\n")
 
-                # Try direct JSON parsing if we don't have issues yet
-                if not batch_issues:
-                    try:
-                        batch_issues = json.loads(response_str)
-                        print(f"✓ Parsed as JSON")
-                    except json.JSONDecodeError as e:
-                        print(f"✗ JSON parse failed: {e}")
+                    # Parse response
+                    batch_issues = []
+                    if isinstance(result.response, list):
+                        batch_issues = result.response
+                        print(f"✓ Already a list!")
+                    elif isinstance(result.response, str):
+                        response_str = result.response.strip()
 
-                        # Try Python literal_eval (handles Python repr format)
-                        try:
-                            import ast
-                            batch_issues = ast.literal_eval(response_str)
-                            print(f"✓ Parsed as Python literal (using ast.literal_eval)")
-                        except Exception as e2:
-                            print(f"✗ Python literal parse also failed: {e2}")
-                            print(f"String was: {response_str[:300]}...")
-            
-            # Ensure batch_issues is a list
-            if not isinstance(batch_issues, list):
+                        # Check if response has FINAL_RESULT markers
+                        if "=== FINAL_RESULT ===" in response_str and "=== END_RESULT ===" in response_str:
+                            try:
+                                start = response_str.index("=== FINAL_RESULT ===") + len("=== FINAL_RESULT ===")
+                                end = response_str.index("=== END_RESULT ===")
+                                json_str = response_str[start:end].strip()
+                                batch_issues = json.loads(json_str)
+                                print(f"✓ Extracted from FINAL_RESULT markers")
+                            except Exception as e:
+                                print(f"✗ Failed to extract from markers: {e}")
+
+                        # Try to extract JSON from markdown code blocks
+                        if not batch_issues and "```json" in response_str:
+                            try:
+                                import re
+                                json_match = re.search(r'```json\s*\n([\s\S]*?)\n```', response_str)
+                                if json_match:
+                                    json_str = json_match.group(1).strip()
+                                    batch_issues = json.loads(json_str)
+                                    print(f"✓ Extracted JSON from markdown code block")
+                            except Exception as e:
+                                print(f"✗ Failed to extract from markdown: {e}")
+
+                        # Try direct JSON parsing if we don't have issues yet
+                        if not batch_issues:
+                            try:
+                                batch_issues = json.loads(response_str)
+                                print(f"✓ Parsed as JSON")
+                            except json.JSONDecodeError as e:
+                                print(f"✗ JSON parse failed: {e}")
+
+                                # Try Python literal_eval (handles Python repr format)
+                                try:
+                                    import ast
+                                    batch_issues = ast.literal_eval(response_str)
+                                    print(f"✓ Parsed as Python literal (using ast.literal_eval)")
+                                except Exception as e2:
+                                    print(f"✗ Python literal parse also failed: {e2}")
+                                    print(f"String was: {response_str[:300]}...")
+
+                    # Ensure batch_issues is a list
+                    if not isinstance(batch_issues, list):
+                        batch_issues = []
+
+                    batch_succeeded = True
+                    break  # Success — exit retry loop
+
+                except Exception as e:
+                    print(f"✗ Batch {batch_num} attempt {attempt} failed: {e}")
+                    if attempt < MAX_RETRIES:
+                        print(f"  Retrying in 10 seconds...")
+                        time.sleep(10)
+                    else:
+                        print(f"✗ Batch {batch_num} failed after {MAX_RETRIES} attempts")
+                        self._notify_progress("batch_error", {
+                            "repo_name": repo_name,
+                            "batch": batch_num,
+                            "total_batches": len(batches),
+                            "error": str(e)
+                        })
+
+            if not batch_succeeded:
                 batch_issues = []
 
             all_issues.extend(batch_issues)

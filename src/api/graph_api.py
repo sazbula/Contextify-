@@ -418,19 +418,26 @@ class GraphAPI:
                             node["issues"] = len(file_issues)
 
                             # Determine severity based on highest severity issue
+                            # Maps RLM severities (none/low/medium/high/critical) to UI colors
                             if file_issues:
                                 has_critical = any(i.get("severity") == "critical" for i in file_issues)
                                 has_high = any(i.get("severity") == "high" for i in file_issues)
                                 has_medium = any(i.get("severity") == "medium" for i in file_issues)
+                                has_low = any(i.get("severity") == "low" for i in file_issues)
+                                all_none = all(i.get("severity") == "none" for i in file_issues)
 
-                                if has_critical:
+                                if all_none:
+                                    node["severity"] = "green"
+                                elif has_critical:
                                     node["severity"] = "purple"
                                 elif has_high:
                                     node["severity"] = "red"
                                 elif has_medium:
                                     node["severity"] = "orange"
+                                elif has_low:
+                                    node["severity"] = "yellow"
                                 else:
-                                    node["severity"] = "yellow"  # low severity
+                                    node["severity"] = "yellow"
 
                                 # Add top issue description
                                 node["topIssue"] = file_issues[0].get("description", "")

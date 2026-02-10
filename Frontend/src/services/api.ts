@@ -118,6 +118,27 @@ export async function healthCheck(): Promise<boolean> {
 }
 
 /**
+ * Generate AI insights for a specific file
+ */
+export async function generateFileInsights(
+  repoName: string,
+  filePath: string
+): Promise<{ insights: string; issues_count: number }> {
+  const response = await fetch(`${API_BASE}/rlm/insights`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_name: repoName, file_path: filePath }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(error.detail || `Failed to generate insights: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Delete analysis data for a repository
  */
 export async function deleteRepo(repoName: string): Promise<void> {

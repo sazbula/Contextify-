@@ -71,18 +71,26 @@ class ContextifyPipeline:
 
         # Check if already analyzed
         if graph_path.exists() and tags_path.exists() and not force_analyze:
-            # Load existing results
-            with open(graph_path, "rb") as f:
-                G = pickle.load(f)
-            return AnalysisResult(
-                repo_name=repo,
-                repo_path=self.repos_dir / repo,
-                graph_path=graph_path,
-                tags_path=tags_path,
-                node_count=len(G.nodes),
-                edge_count=len(G.edges),
-                repo_info=repo_info,
-            )
+            # Check if the actual repo directory still exists
+            cached_repo_path = self.repos_dir / repo
+            if not cached_repo_path.exists():
+                print(f"⚠ Cached graph found but repo directory missing: {cached_repo_path}")
+                print(f"  Re-downloading repository...")
+                force_download = True
+                # Continue to download step below
+            else:
+                # Load existing results
+                with open(graph_path, "rb") as f:
+                    G = pickle.load(f)
+                return AnalysisResult(
+                    repo_name=repo,
+                    repo_path=cached_repo_path,
+                    graph_path=graph_path,
+                    tags_path=tags_path,
+                    node_count=len(G.nodes),
+                    edge_count=len(G.edges),
+                    repo_info=repo_info,
+                )
 
         # Step 1: Download repository
         print(f"Downloading {owner}/{repo}...")

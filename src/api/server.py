@@ -415,6 +415,90 @@ async def rlm_status():
     }
 
 
+class FileInsightsRequest(BaseModel):
+    repo_name: str
+    file_path: str
+
+
+@app.post("/rlm/insights")
+async def generate_file_insights(request: FileInsightsRequest):
+    """Generate AI insights and advice for a specific file."""
+    import openai
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+    
+    # Read the file content
+    repo_path = pipeline.repos_dir / request.repo_name
+    file_full_path = repo_path / request.file_path
+    
+    if not file_full_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+    
+    try:
+        with open(file_full_path, 'r', encoding='utf-8') as f:
+            file_content = f.read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
+    
+    # Get existing issues for this file from analysis results
+    analysis_path = Path("analysis") / request.repo_name / "detailed_analysis.json"
+    existing_issues = []
+    if analysis_path.exists():
+        try:
+            with open(analysis_path, 'r', encoding='utf-8') as f:
+                analysis_data = json.load(f)
+                normalized_path = request.file_path.replace('\\', '/')
+                existing_issues = analysis_data.get('issues_by_file', {}).get(normalized_path, [])
+        except:
+            pass
+    
+    # Call OpenAI for insights
+    try:
+        client = openai.OpenAI(api_key=api_key)
+        
+        issues_context = ""
+        if existing_issues:
+            issues_context = "\n\nExisting detected issues:\n"
+            for issue in existing_issues[:5]:  # Limit to 5 most relevant
+                issues_context += f"- {issue.get('severity', 'unknown').upper()}: {issue.get('description', 'No description')}\n"
+        
+        prompt = f"""Analyze this code file and provide concise, actionable insights and advice.
+
+File: {request.file_path}
+{issues_context}
+Code:
+```
+{file_content[:3000]}  
+```
+
+Provide:
+1. Brief summary (1-2 sentences)
+2. Key improvements (2-3 bullet points, max 10 words each)
+3. Priority action (1 sentence)
+
+Be concise and specific."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.7
+        )
+        
+        insights = response.choices[0].message.content
+        
+        return {
+            "file_path": request.file_path,
+            "insights": insights,
+            "issues_count": len(existing_issues)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate insights: {str(e)}")
+
+
 @app.get("/rlm/progress/{repo_name}")
 async def get_rlm_progress(repo_name: str):
     """Get real-time progress for an ongoing RLM analysis."""

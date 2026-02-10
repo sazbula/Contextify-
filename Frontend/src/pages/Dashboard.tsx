@@ -11,16 +11,21 @@ import { Loader2 } from "lucide-react";
 const API_BASE = "http://localhost:8000";
 
 // Helper function to determine severity from issues
+// Maps RLM severities (none/low/medium/high/critical) to UI colors
 const getSeverityFromIssues = (issues: any[]): FileNode["severity"] => {
   if (issues.length === 0) return "green";
 
   const hasCritical = issues.some(i => i.severity === "critical");
   const hasHigh = issues.some(i => i.severity === "high");
   const hasMedium = issues.some(i => i.severity === "medium");
+  const hasLow = issues.some(i => i.severity === "low");
+  const allNone = issues.every(i => i.severity === "none");
 
+  if (allNone) return "green";
   if (hasCritical) return "purple";
   if (hasHigh) return "red";
   if (hasMedium) return "orange";
+  if (hasLow) return "yellow";
   return "yellow";
 };
 
@@ -198,6 +203,14 @@ const Dashboard = () => {
             totalBatches: data.total_batches,
             issuesFound: data.total_issues || data.summary?.total_issues || 0,
             percent: 35 + (data.batch / data.total_batches) * 60,
+          }));
+        }
+
+        // Handle batch failure after retries exhausted
+        if (data.type === "batch_error") {
+          setRlmProgress(prev => ({
+            ...prev,
+            phase: `Batch ${data.batch}/${data.total_batches} failed: ${data.error}`,
           }));
         }
 
