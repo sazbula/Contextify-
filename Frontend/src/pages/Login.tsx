@@ -1,11 +1,142 @@
 import { motion } from "framer-motion";
-import { Eye } from "lucide-react";
+import { Eye, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import logo from "@/assets/contextify-logo.png";
+import { useState, useRef, useEffect } from "react";
+import { analyzeLocalRepo } from "@/services/api";
+
+const API_BASE = "http://localhost:8000";
 
 const Login = () => {
   const navigate = useNavigate();
+  const [analyzingDemo, setAnalyzingDemo] = useState(false);
+  const [progressPhase, setProgressPhase] = useState("");
+  const [progressPercent, setProgressPercent] = useState(0);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const startLiveDemo = async () => {
+    setAnalyzingDemo(true);
+    setProgressPhase("Connecting...");
+    setProgressPercent(5);
+
+    try {
+      const repoName = "demo_repo";
+
+      // Connect to SSE first and wait for connection to establish
+      const sseReady = new Promise<void>((resolve) => {
+        connectSSE(repoName, resolve);
+      });
+
+      // Wait for SSE to be ready
+      await sseReady;
+
+      // Small delay to ensure SSE connection is fully established
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Trigger actual RLM analysis on demo_repo - events will now be captured
+      await analyzeLocalRepo(repoName, false, true);
+
+      // Navigation happens when graph_complete event fires
+    } catch (err) {
+      console.error("Demo analysis failed:", err);
+      setAnalyzingDemo(false);
+      setProgressPhase("");
+      setProgressPercent(0);
+      // Close SSE on error
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    }
+  };
+
+  const connectSSE = (repoName: string, onConnected?: () => void) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    eventSourceRef.current = new EventSource(`${API_BASE}/rlm/stream/${repoName}`);
+
+    eventSourceRef.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("SSE Progress:", data);
+
+        // Notify that connection is ready
+        if (data.type === "connected") {
+          setProgressPhase("Connected to analysis stream");
+          setProgressPercent(10);
+          if (onConnected) onConnected();
+        }
+
+        if (data.type === "graph_building") {
+          setProgressPhase("Building dependency graph...");
+          setProgressPercent(20);
+        }
+
+        // Navigate to dashboard as soon as the graph is built
+        if (data.type === "graph_complete") {
+          setProgressPhase(`Graph ready — ${data.nodes} nodes, ${data.edges} edges`);
+          setProgressPercent(50);
+          setTimeout(() => {
+            localStorage.setItem("currentRepo", repoName);
+            localStorage.setItem("rlmInProgress", "true");
+            navigate("/dashboard");
+          }, 800);
+        }
+
+        if (data.type === "collecting_files") {
+          setProgressPhase("Collecting files for analysis...");
+          setProgressPercent(55);
+        }
+
+        if (data.type === "files_collected") {
+          setProgressPhase(`Found ${data.file_count} files to analyze`);
+          setProgressPercent(60);
+        }
+
+        if (data.type === "rlm_started") {
+          setProgressPhase("AI analysis starting...");
+          setProgressPercent(65);
+        }
+
+        if (data.type === "batch_start") {
+          setProgressPhase(`Analyzing batch ${data.batch}/${data.total_batches}...`);
+          setProgressPercent(70);
+        }
+
+        // Mark RLM as complete
+        if (data.type === "analysis_complete") {
+          localStorage.setItem("rlmInProgress", "false");
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing SSE data:", error);
+      }
+    };
+
+    eventSourceRef.current.onerror = (error) => {
+      console.error("SSE error:", error);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background relative overflow-hidden">
@@ -69,7 +200,40 @@ const Login = () => {
             We only request read access to repos you select.
           </p>
 
-          <div className="mt-6 pt-5 border-t border-border">
+          <div className="mt-6 pt-5 border-t border-border flex flex-col gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full gap-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+              onClick={startLiveDemo}
+              disabled={analyzingDemo}
+            >
+              {analyzingDemo ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {progressPhase || "Starting analysis..."}
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  Try Live Demo
+                </>
+              )}
+            </Button>
+
+            {analyzingDemo && (
+              <div className="mt-1 space-y-2">
+                <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-purple-500 to-blue-500"
+                    animate={{ width: `${progressPercent}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">{progressPhase}</p>
+              </div>
+            )}
+
             <Button
               variant="ghost"
               size="sm"
@@ -77,7 +241,7 @@ const Login = () => {
               onClick={() => navigate("/dashboard")}
             >
               <Eye className="w-4 h-4" />
-              View demo
+              View pre-analyzed demo
             </Button>
           </div>
         </div>

@@ -41,20 +41,22 @@ export interface RepoInfo {
 }
 
 /**
- * Analyze a GitHub repository
+ * Analyze a GitHub repository with full RLM scanning
  * @param url GitHub repository URL
  * @param force Force re-download and re-analysis
+ * @param runRlm Whether to run RLM analysis (default: true)
  */
 export async function analyzeRepo(
   url: string,
-  force: boolean = false
+  force: boolean = false,
+  runRlm: boolean = true
 ): Promise<AnalyzeResponse> {
-  const response = await fetch(`${API_BASE}/analyze`, {
+  const response = await fetch(`${API_BASE}/analyze-full`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ url, force }),
+    body: JSON.stringify({ url, force, run_rlm: runRlm }),
   });
 
   if (!response.ok) {
@@ -116,6 +118,35 @@ export async function healthCheck(): Promise<boolean> {
 }
 
 /**
+ * Generate AI insights for a specific file
+ * @param repoName Name of the repository
+ * @param filePath Path to the file
+ * @param issueDescription Optional specific issue description to focus insights on
+ */
+export async function generateFileInsights(
+  repoName: string,
+  filePath: string,
+  issueDescription?: string
+): Promise<{ insights: string; issues_count: number }> {
+  const response = await fetch(`${API_BASE}/rlm/insights`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      repo_name: repoName,
+      file_path: filePath,
+      issue_description: issueDescription
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(error.detail || `Failed to generate insights: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Delete analysis data for a repository
  */
 export async function deleteRepo(repoName: string): Promise<void> {
@@ -128,4 +159,96 @@ export async function deleteRepo(repoName: string): Promise<void> {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
     throw new Error(error.detail || `Failed to delete: ${response.status}`);
   }
+}
+
+/**
+ * Analyze a local repository with full RLM scanning
+ * @param repoName Name of the local repository in repos/ folder
+ * @param force Force re-analysis
+ * @param runRlm Whether to run RLM analysis (default: true)
+ */
+export async function analyzeLocalRepo(
+  repoName: string,
+  force: boolean = false,
+  runRlm: boolean = true
+): Promise<AnalyzeResponse> {
+  const response = await fetch(`${API_BASE}/analyze-local`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ repo_name: repoName, force, run_rlm: runRlm }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(error.detail || `Analysis failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ---------------------------
+// RLM issue helpers
+// ---------------------------
+
+export type BackendIssue = {
+  file?: string;
+  severity?: string;
+  description?: string;
+  line?: number | string;
+  rule?: string;
+  type?: string;
+  title?: string;
+  code?: string;
+  snippet?: string;
+};
+
+const severityFromBackend = (severity?: string): "green" | "yellow" | "orange" | "red" | "purple" => {
+  const s = (severity || "").toLowerCase();
+  if (s === "critical") return "purple";
+  if (s === "high") return "red";
+  if (s === "medium") return "orange";
+  if (s === "low") return "yellow";
+  return "green";
+};
+
+/**
+ * Fetch full RLM results for a repo
+ */
+export async function getRlmResults(repoName: string): Promise<any> {
+  const response = await fetch(`${API_BASE}/rlm/results/${encodeURIComponent(repoName)}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(error.detail || `Failed to load RLM results: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetch issues for a single file, mapped into UI Issue shape
+ */
+export async function getFileIssues(
+  repoName: string,
+  filePath: string
+): Promise<import("@/data/mockData").Issue[]> {
+  const results = await getRlmResults(repoName);
+  const normalized = filePath.replace(/\\\\/g, "/");
+  const rawIssues: BackendIssue[] =
+    results?.issues_by_file?.[normalized] ||
+    results?.issues_by_file?.[filePath] ||
+    [];
+
+  return rawIssues.map((issue, idx) => ({
+    id: idx,
+    file: normalized,
+    line: String(issue.line ?? issue.rule ?? "-"),
+    severity: severityFromBackend(issue.severity),
+    type: (issue.type as any) || "analysis",
+    title: issue.title || issue.description || "Issue",
+    rule: issue.rule || issue.code || "N/A",
+    status: "open",
+    description: issue.description,
+    codeSnippet: issue.snippet,
+  }));
 }

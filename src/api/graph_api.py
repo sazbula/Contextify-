@@ -341,9 +341,45 @@ class GraphAPI:
 
         for node in all_nodes:
             if node.name not in node_map:
-                # Extract folder from file path
+                # Get file path - node.file should already be relative from graph_builder
                 file_path = node.file if node.file else node.name
-                path_parts = file_path.replace("\\", "/").split("/")
+
+                # Normalize path separators to forward slashes
+                file_path = file_path.replace("\\", "/")
+
+                # Clean up any remaining absolute path components
+                # Remove drive letters (C:/, D:/, etc.)
+                if len(file_path) > 2 and file_path[1] == ':':
+                    file_path = file_path[3:] if len(file_path) > 3 else file_path[2:]
+                
+                # Remove /Users/, /home/, C:/Users/ etc.
+                if "/Users/" in file_path or "/home/" in file_path:
+                    # Extract everything after /repos/repo_name/ or the last known repo directory
+                    if "/repos/" in file_path:
+                        parts = file_path.split("/repos/")
+                        if len(parts) > 1:
+                            remaining = parts[1]
+                            # Skip repo name, get rest
+                            remaining_parts = remaining.split("/", 1)
+                            if len(remaining_parts) > 1:
+                                file_path = remaining_parts[1]
+                            else:
+                                file_path = remaining
+                    elif "/Programowanie/" in file_path or "/Programming/" in file_path:
+                        # Try to extract from common project directories
+                        for marker in ["/Programowanie/", "/Programming/", "/Projects/", "/Code/"]:
+                            if marker in file_path:
+                                parts = file_path.split(marker)
+                                if len(parts) > 1:
+                                    # Find the repo name and extract relative path
+                                    remaining = parts[1]
+                                    remaining_parts = remaining.split("/", 2)  # Skip project and repo name
+                                    if len(remaining_parts) > 2:
+                                        file_path = remaining_parts[2]
+                                    break
+
+                # Extract folder from file path
+                path_parts = file_path.split("/")
                 if len(path_parts) > 1:
                     folder = "/".join(path_parts[:-1])
                 else:
@@ -358,11 +394,60 @@ class GraphAPI:
                     "id": node.name,
                     "path": file_path,
                     "folder": folder,
-                    "severity": "gray",  # Default - severity logic handled elsewhere
-                    "issues": 0,         # Default - issues handled elsewhere
+                    "severity": "gray",  # Default - updated from RLM data below
+                    "issues": 0,         # Default - updated from RLM data below
                     "size": max(8, min(20, 8 + out_degree)),  # Size based on connections
                 }
                 nodes.append(node_map[node.name])
+
+        # Load RLM analysis results if available
+        repo_name = self.output_dir.name
+        analysis_file = Path("analysis") / repo_name / "detailed_analysis.json"
+
+        if analysis_file.exists():
+            try:
+                with open(analysis_file, 'r') as f:
+                    rlm_data = json.load(f)
+                    issues_by_file = rlm_data.get("issues_by_file", {})
+
+                    # Update node severity and issues based on RLM data
+                    for node in nodes:
+                        file_path = node["path"]
+                        if file_path in issues_by_file:
+                            file_issues = issues_by_file[file_path]
+                            node["issues"] = len(file_issues)
+
+                            # Determine severity based on highest severity issue
+                            # Maps RLM severities (none/low/medium/high/critical) to UI colors
+                            if file_issues:
+                                has_critical = any(i.get("severity") == "critical" for i in file_issues)
+                                has_high = any(i.get("severity") == "high" for i in file_issues)
+                                has_medium = any(i.get("severity") == "medium" for i in file_issues)
+                                has_low = any(i.get("severity") == "low" for i in file_issues)
+                                all_none = all(i.get("severity") == "none" for i in file_issues)
+
+                                if all_none:
+                                    node["severity"] = "green"
+                                elif has_critical:
+                                    node["severity"] = "purple"
+                                elif has_high:
+                                    node["severity"] = "red"
+                                elif has_medium:
+                                    node["severity"] = "orange"
+                                elif has_low:
+                                    node["severity"] = "yellow"
+                                else:
+                                    node["severity"] = "yellow"
+
+                                # Add top issue description
+                                node["topIssue"] = file_issues[0].get("description", "")
+                        else:
+                            # File analyzed but no issues found
+                            if node["issues"] == 0 and rlm_data.get("files_analyzed", 0) > 0:
+                                node["severity"] = "green"
+            except Exception as e:
+                # Silently fail if RLM data can't be loaded
+                print(f"Could not load RLM data: {e}")
 
         # Create edges (only for nodes that exist)
         edge_list = []
