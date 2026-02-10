@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GraphLegend from "./GraphLegend";
-import { mockEdges, severityCounts } from "@/data/mockData";
-import type { FileNode } from "@/data/mockData";
+import type { FileNode, Edge } from "@/data/mockData";
 import type { Severity } from "@/data/types";
 
 interface FileGraphProps {
   nodes: FileNode[];
+  edges: Edge[];
   onNodeClick: (node: FileNode) => void;
   selectedNodeId?: string;
 }
@@ -22,38 +22,152 @@ const severityFill: Record<Severity, string> = {
   gray: "hsl(211, 20%, 40%)",
 };
 
-/* ── Cluster layout definitions ────────────────────────────── */
+/* ── Tree-based hierarchical layout ────────────────────────────── */
 interface ClusterDef {
   id: string;
   label: string;
-  col: number;
-  row: number;
+  depth: number;
+  x: number;  // Horizontal position (computed)
+  parent: string | null;
+  children: string[];
 }
 
-const clusterDefs: ClusterDef[] = [
-  { id: "root", label: "/ (root)", col: 0, row: 0 },
-  { id: "src", label: "src/", col: 1, row: 0 },
-  { id: "src/middleware", label: "src/middleware/", col: 0, row: 1 },
-  { id: "src/auth", label: "src/auth/", col: 1, row: 1 },
-  { id: "src/services", label: "src/services/", col: 2, row: 1 },
-  { id: "tests", label: "tests/", col: 3, row: 1 },
-  { id: "src/api", label: "src/api/", col: 0, row: 2 },
-  { id: "src/db", label: "src/db/", col: 1, row: 2 },
-  { id: "src/utils", label: "src/utils/", col: 2, row: 2 },
-];
+interface TreeNode {
+  id: string;
+  children: TreeNode[];
+  width: number;  // Subtree width for layout
+}
 
-const CLUSTER_W = 230;
-const CLUSTER_GAP_X = 30;
-const CLUSTER_GAP_Y = 30;
+/**
+ * Build a tree structure from folder paths
+ */
+function buildFolderTree(folders: string[]): Map<string, { parent: string | null; children: string[]; depth: number }> {
+  const tree = new Map<string, { parent: string | null; children: string[]; depth: number }>();
+
+  // Initialize root
+  tree.set("root", { parent: null, children: [], depth: 0 });
+
+  // Sort folders by depth to process parents before children
+  const sortedFolders = [...folders].sort((a, b) => {
+    if (a === "root") return -1;
+    if (b === "root") return 1;
+    const depthA = (a.match(/\//g) || []).length;
+    const depthB = (b.match(/\//g) || []).length;
+    return depthA - depthB;
+  });
+
+  for (const folder of sortedFolders) {
+    if (folder === "root") continue;
+
+    // Find parent folder
+    const parts = folder.split("/");
+    let parent = "root";
+    if (parts.length > 1) {
+      const parentPath = parts.slice(0, -1).join("/");
+      if (tree.has(parentPath)) {
+        parent = parentPath;
+      }
+    }
+
+    const depth = (folder.match(/\//g) || []).length + 1;
+    tree.set(folder, { parent, children: [], depth });
+
+    // Add this folder as child of parent
+    const parentNode = tree.get(parent);
+    if (parentNode && !parentNode.children.includes(folder)) {
+      parentNode.children.push(folder);
+    }
+  }
+
+  return tree;
+}
+
+/**
+ * Compute subtree widths for positioning
+ */
+function computeSubtreeWidths(nodeId: string, tree: Map<string, { parent: string | null; children: string[]; depth: number }>): Map<string, number> {
+  const widths = new Map<string, number>();
+
+  function compute(id: string): number {
+    const node = tree.get(id);
+    if (!node || node.children.length === 0) {
+      widths.set(id, 1);
+      return 1;
+    }
+
+    const childWidths = node.children.map(c => compute(c));
+    const totalWidth = childWidths.reduce((a, b) => a + b, 0);
+    widths.set(id, Math.max(1, totalWidth));
+    return Math.max(1, totalWidth);
+  }
+
+  compute(nodeId);
+  return widths;
+}
+
+/**
+ * Generate hierarchical cluster definitions from nodes' folder structure
+ */
+function generateClusterDefs(nodes: FileNode[]): ClusterDef[] {
+  // Get unique folders from nodes
+  const folders = new Set<string>();
+  for (const node of nodes) {
+    folders.add(node.folder);
+  }
+
+  // Build tree structure
+  const tree = buildFolderTree(Array.from(folders));
+  const widths = computeSubtreeWidths("root", tree);
+
+  // Assign x positions using tree layout
+  const positions = new Map<string, number>();
+
+  function assignPositions(nodeId: string, leftX: number): void {
+    const node = tree.get(nodeId);
+    if (!node) return;
+
+    const width = widths.get(nodeId) || 1;
+    const centerX = leftX + width / 2;
+    positions.set(nodeId, centerX);
+
+    // Position children
+    let childX = leftX;
+    for (const childId of node.children) {
+      const childWidth = widths.get(childId) || 1;
+      assignPositions(childId, childX);
+      childX += childWidth;
+    }
+  }
+
+  assignPositions("root", 0);
+
+  // Convert to ClusterDef array
+  const clusterDefs: ClusterDef[] = [];
+  for (const [folderId, nodeData] of tree) {
+    clusterDefs.push({
+      id: folderId,
+      label: folderId === "root" ? "/ (root)" : folderId + "/",
+      depth: nodeData.depth,
+      x: positions.get(folderId) || 0,
+      parent: nodeData.parent,
+      children: nodeData.children,
+    });
+  }
+
+  return clusterDefs;
+}
+
+const CLUSTER_W = 200;
+const CLUSTER_GAP_X = 40;
+const LEVEL_HEIGHT = 180;  // Vertical spacing between tree levels
 const NODE_R = 11;
 const NODE_SPACING_X = 50;
 const NODE_SPACING_Y = 44;
 const CLUSTER_PAD_TOP = 36;
-const CLUSTER_PAD_X = 24;
+const CLUSTER_PAD_X = 20;
 const CLUSTER_PAD_BOTTOM = 20;
-const COLS = 4;
 
-function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
+function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>, clusterDefs: ClusterDef[]) {
   // Group nodes by folder
   const groups = new Map<string, FileNode[]>();
   for (const n of nodes) {
@@ -65,12 +179,16 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
   // Compute cluster heights & positions
   const clusterBounds = new Map<
     string,
-    { x: number; y: number; w: number; h: number }
+    { x: number; y: number; w: number; h: number; depth: number; parent: string | null }
   >();
   const nodePositions = new Map<string, { x: number; y: number }>();
 
-  // First pass: compute heights per row to align
-  const rowHeights = new Map<number, number>();
+  // Find the maximum x position to calculate total width
+  const maxX = Math.max(...clusterDefs.map(c => c.x), 1);
+  const maxDepth = Math.max(...clusterDefs.map(c => c.depth), 0);
+
+  // First pass: compute heights per depth level to align
+  const levelHeights = new Map<number, number>();
 
   for (const cd of clusterDefs) {
     const members = groups.get(cd.id) || [];
@@ -88,26 +206,24 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
     const h = collapsed
       ? CLUSTER_PAD_TOP + 8
       : CLUSTER_PAD_TOP + rows * NODE_SPACING_Y + CLUSTER_PAD_BOTTOM;
-    const prev = rowHeights.get(cd.row) || 0;
-    if (h > prev) rowHeights.set(cd.row, h);
+    const prev = levelHeights.get(cd.depth) || 0;
+    if (h > prev) levelHeights.set(cd.depth, h);
   }
 
-  // Second pass: assign positions
-  // Compute row Y offsets
-  const rowY = new Map<number, number>();
-  let accY = 20;
-  const maxRow = Math.max(...clusterDefs.map(c => c.row));
-  for (let r = 0; r <= maxRow; r++) {
-    rowY.set(r, accY);
-    accY += (rowHeights.get(r) || 100) + CLUSTER_GAP_Y;
-  }
-
+  // Second pass: assign positions using tree layout
   for (const cd of clusterDefs) {
     const members = groups.get(cd.id) || [];
     const collapsed = collapsedClusters.has(cd.id);
 
-    const cx = 20 + cd.col * (CLUSTER_W + CLUSTER_GAP_X);
-    const cy = rowY.get(cd.row)!;
+    // X position based on tree layout (centered in subtree)
+    const cx = 40 + (cd.x - 0.5) * (CLUSTER_W + CLUSTER_GAP_X);
+
+    // Y position based on depth
+    let cy = 20;
+    for (let d = 0; d < cd.depth; d++) {
+      cy += (levelHeights.get(d) || LEVEL_HEIGHT) + 40;
+    }
+
     const cols = Math.min(
       members.length,
       Math.max(
@@ -122,7 +238,7 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
       ? CLUSTER_PAD_TOP + 8
       : CLUSTER_PAD_TOP + rows * NODE_SPACING_Y + CLUSTER_PAD_BOTTOM;
 
-    clusterBounds.set(cd.id, { x: cx, y: cy, w: CLUSTER_W, h });
+    clusterBounds.set(cd.id, { x: cx, y: cy, w: CLUSTER_W, h, depth: cd.depth, parent: cd.parent });
 
     if (!collapsed) {
       members.forEach((node, i) => {
@@ -136,13 +252,18 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>) {
     }
   }
 
-  const svgW = COLS * (CLUSTER_W + CLUSTER_GAP_X) + 40;
-  const svgH = accY + 20;
+  // Calculate SVG dimensions
+  const svgW = Math.max(800, (maxX + 0.5) * (CLUSTER_W + CLUSTER_GAP_X) + 80);
+  let svgH = 20;
+  for (let d = 0; d <= maxDepth; d++) {
+    svgH += (levelHeights.get(d) || LEVEL_HEIGHT) + 40;
+  }
+  svgH += 40;
 
   return { clusterBounds, nodePositions, svgW, svgH, groups };
 }
 
-const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
+const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps) => {
   const [zoom, setZoom] = useState(1);
   const [hoveredNode, setHoveredNode] = useState<FileNode | null>(null);
   const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(
@@ -161,15 +282,31 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
     setZoom(z => Math.max(0.3, Math.min(2.5, z + dir * 0.2)));
   }, []);
 
+  // Generate dynamic cluster definitions from nodes
+  const clusterDefs = useMemo(
+    () => generateClusterDefs(nodes),
+    [nodes]
+  );
+
+  // Compute severity counts dynamically
+  const severityCounts = useMemo(() => ({
+    green: nodes.filter(n => n.severity === "green").length,
+    yellow: nodes.filter(n => n.severity === "yellow").length,
+    orange: nodes.filter(n => n.severity === "orange").length,
+    red: nodes.filter(n => n.severity === "red").length,
+    purple: nodes.filter(n => n.severity === "purple").length,
+    gray: nodes.filter(n => n.severity === "gray").length,
+  }), [nodes]);
+
   const { clusterBounds, nodePositions, svgW, svgH, groups } = useMemo(
-    () => computeLayout(nodes, collapsedClusters),
-    [nodes, collapsedClusters]
+    () => computeLayout(nodes, collapsedClusters, clusterDefs),
+    [nodes, collapsedClusters, clusterDefs]
   );
 
   const visibleEdges = useMemo(() => {
     const posSet = nodePositions;
-    return mockEdges.filter(e => posSet.has(e.from) && posSet.has(e.to));
-  }, [nodePositions]);
+    return edges.filter(e => posSet.has(e.from) && posSet.has(e.to));
+  }, [nodePositions, edges]);
 
   return (
     <div className="w-full h-full relative graph-bg">
@@ -223,22 +360,51 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
           viewBox={`0 0 ${svgW} ${svgH}`}
           className="min-w-full min-h-full"
         >
-          {/* Arrowhead marker */}
+          {/* Arrowhead markers - subtle but visible */}
           <defs>
-            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-              <polygon points="0 0, 8 3, 0 6" fill="hsl(211, 30%, 35%)" />
+            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6, 1.5 3" fill="hsl(210, 30%, 45%)" />
             </marker>
-            <marker
-              id="arrowhead-highlight"
-              markerWidth="8"
-              markerHeight="6"
-              refX="8"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="0 0, 8 3, 0 6" fill="hsl(252, 100%, 68%)" />
+            <marker id="arrowhead-highlight" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+              <polygon points="0 0, 10 4, 0 8, 2 4" fill="hsl(252, 100%, 68%)" />
             </marker>
+            {/* Glow filter for highlighted edges */}
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
+
+          {/* Cluster hierarchy lines (parent to children) */}
+          {clusterDefs.map(cd => {
+            if (!cd.parent) return null;
+            const parentBounds = clusterBounds.get(cd.parent);
+            const childBounds = clusterBounds.get(cd.id);
+            if (!parentBounds || !childBounds) return null;
+
+            // Draw line from bottom-center of parent to top-center of child
+            const px = parentBounds.x + parentBounds.w / 2;
+            const py = parentBounds.y + parentBounds.h;
+            const cx = childBounds.x + childBounds.w / 2;
+            const cy = childBounds.y;
+
+            const midY = (py + cy) / 2;
+
+            return (
+              <path
+                key={`hierarchy-${cd.id}`}
+                d={`M ${px} ${py} C ${px} ${midY}, ${cx} ${midY}, ${cx} ${cy}`}
+                fill="none"
+                stroke="hsl(211, 40%, 25%)"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                opacity={0.4}
+              />
+            );
+          })}
 
           {/* Cluster boxes */}
           {clusterDefs.map(cd => {
@@ -314,7 +480,7 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
             );
           })}
 
-          {/* Edges with arrows */}
+          {/* Edges with curved Bezier paths */}
           {visibleEdges.map((edge, i) => {
             const from = nodePositions.get(edge.from)!;
             const to = nodePositions.get(edge.to)!;
@@ -326,25 +492,41 @@ const FileGraph = ({ nodes, onNodeClick, selectedNodeId }: FileGraphProps) => {
             const dy = to.y - from.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < 1) return null;
+
             const nx = dx / dist;
             const ny = dy / dist;
             const sx = from.x + nx * NODE_R;
             const sy = from.y + ny * NODE_R;
-            const ex = to.x - nx * (NODE_R + 8);
-            const ey = to.y - ny * (NODE_R + 8);
+            const ex = to.x - nx * (NODE_R + 10);
+            const ey = to.y - ny * (NODE_R + 10);
+
+            // Create curved Bezier path
+            // For vertical movement, curve horizontally; for horizontal, curve vertically
+            const isMoreVertical = Math.abs(dy) > Math.abs(dx);
+            let pathD: string;
+
+            if (isMoreVertical) {
+              // Vertical edge - use S-curve
+              const midY = (sy + ey) / 2;
+              pathD = `M ${sx} ${sy} C ${sx} ${midY}, ${ex} ${midY}, ${ex} ${ey}`;
+            } else {
+              // Horizontal edge - use gentle curve
+              const midX = (sx + ex) / 2;
+              const curveOffset = Math.min(30, Math.abs(dy) * 0.5);
+              pathD = `M ${sx} ${sy} C ${midX} ${sy - curveOffset}, ${midX} ${ey - curveOffset}, ${ex} ${ey}`;
+            }
 
             return (
-              <line
+              <path
                 key={i}
-                x1={sx}
-                y1={sy}
-                x2={ex}
-                y2={ey}
-                stroke={isHighlighted ? "hsl(252, 100%, 68%)" : "hsl(211, 30%, 25%)"}
-                strokeWidth={isHighlighted ? 1.5 : 0.8}
-                opacity={hoveredNode ? (isHighlighted ? 0.8 : 0.1) : 0.3}
+                d={pathD}
+                fill="none"
+                stroke={isHighlighted ? "hsl(252, 100%, 68%)" : "hsl(210, 30%, 40%)"}
+                strokeWidth={isHighlighted ? 2 : 0.75}
+                opacity={hoveredNode ? (isHighlighted ? 0.9 : 0.08) : 0.25}
                 markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
-                style={{ transition: "opacity 0.2s, stroke 0.2s" }}
+                filter={isHighlighted ? "url(#glow)" : undefined}
+                style={{ transition: "opacity 0.2s, stroke 0.2s, stroke-width 0.2s" }}
               />
             );
           })}

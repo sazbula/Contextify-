@@ -1,16 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Lock, Loader2, Check } from "lucide-react";
+import { Lock, Loader2, Check, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "@/components/layout/AppHeader";
+import { analyzeRepo } from "@/services/api";
 
 const steps = [
   { label: "Cloning", description: "Fetching repository..." },
   { label: "Indexing", description: "Building file index..." },
-  { label: "RLM Context Map", description: "Mapping dependencies with RLM..." },
+  { label: "Building Graph", description: "Mapping dependencies..." },
   { label: "Analysis Complete", description: "Ready to explore!" },
 ];
 
@@ -21,36 +22,65 @@ const RepoImport = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const analysisStarted = useRef(false);
 
   const isValidUrl = url.match(/^https?:\/\/github\.com\/.+\/.+/);
 
-  const startAnalysis = () => {
+  const startAnalysis = async () => {
+    if (analysisStarted.current) return;
+    analysisStarted.current = true;
+
     setAnalyzing(true);
     setCurrentStep(0);
     setProgress(0);
+    setError(null);
+
+    try {
+      // Step 1: Cloning
+      setCurrentStep(0);
+      setProgress(25);
+
+      // Call the backend API
+      const result = await analyzeRepo(url);
+
+      // Step 2: Indexing (simulated progress during API call)
+      setCurrentStep(1);
+      setProgress(50);
+
+      // Small delay for visual feedback
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Step 3: Building Graph
+      setCurrentStep(2);
+      setProgress(75);
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Step 4: Complete
+      setCurrentStep(3);
+      setProgress(100);
+
+      // Store repo name for dashboard
+      localStorage.setItem("currentRepo", result.repo_name);
+
+      // Navigate to dashboard after brief delay
+      setTimeout(() => navigate("/dashboard"), 800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Analysis failed");
+      setAnalyzing(false);
+      setCurrentStep(-1);
+      setProgress(0);
+      analysisStarted.current = false;
+    }
   };
 
+  // Reset ref when component unmounts
   useEffect(() => {
-    if (!analyzing) return;
-    const stepDurations = [1500, 2000, 2500, 500];
-    let totalElapsed = 0;
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    stepDurations.forEach((duration, i) => {
-      totalElapsed += duration;
-      timers.push(
-        setTimeout(() => {
-          setCurrentStep(i + 1);
-          setProgress(((i + 1) / steps.length) * 100);
-          if (i === steps.length - 1) {
-            setTimeout(() => navigate("/dashboard"), 800);
-          }
-        }, totalElapsed)
-      );
-    });
-
-    return () => timers.forEach(clearTimeout);
-  }, [analyzing]);
+    return () => {
+      analysisStarted.current = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -96,6 +126,13 @@ const RepoImport = () => {
                 >
                   Clone & Analyze
                 </Button>
+
+                {error && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span className="text-sm">{error}</span>
+                  </div>
+                )}
               </div>
             </>
           ) : (
