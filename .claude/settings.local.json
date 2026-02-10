@@ -13,7 +13,9 @@
       "Bash(curl:*)",
       "Bash(taskkill /F /FI \"WINDOWTITLE eq python*\")",
       "Bash(taskkill /F /FI \"IMAGENAME eq python.exe\")",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force ''C:\\\\Users\\\\User\\\\GitHub\\\\Tech-Venture-\\\\web''\")",
+      "Bash(npx tsc:*)"
     ]
   }
 }

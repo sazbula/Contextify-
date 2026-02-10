@@ -300,18 +300,17 @@ class GraphAPI:
 
     def to_vis_format(self, files_only: bool = False) -> dict:
         """
-        Export graph in format suitable for visualization libraries.
+        Export graph in format suitable for the React frontend visualization.
 
-        Compatible with:
-        - vis.js
-        - react-force-graph
-        - D3.js force layout
+        Returns format compatible with Frontend/src/data/mockData.ts types:
+        - FileNode: id, path, folder, severity, issues, topIssue?, size?
+        - Edge: from, to
 
         Args:
             files_only: If True, only include file nodes (better for large repos)
 
         Returns:
-            Dict with nodes and links arrays
+            Dict with nodes and edges arrays
         """
         if not self.graph:
             raise RuntimeError("Graph not loaded. Call load() first.")
@@ -342,17 +341,31 @@ class GraphAPI:
 
         for node in all_nodes:
             if node.name not in node_map:
+                # Extract folder from file path
+                file_path = node.file if node.file else node.name
+                path_parts = file_path.replace("\\", "/").split("/")
+                if len(path_parts) > 1:
+                    folder = "/".join(path_parts[:-1])
+                else:
+                    folder = "root"
+
+                # Count outgoing edges for sizing
+                out_degree = 0
+                if node.name in self.graph:
+                    out_degree = self.graph.out_degree(node.name)
+
                 node_map[node.name] = {
                     "id": node.name,
-                    "name": node.name,
-                    "category": node.category,  # Use category directly
-                    "group": node.category,     # Keep for compatibility
-                    "file": node.file,
+                    "path": file_path,
+                    "folder": folder,
+                    "severity": "gray",  # Default - severity logic handled elsewhere
+                    "issues": 0,         # Default - issues handled elsewhere
+                    "size": max(8, min(20, 8 + out_degree)),  # Size based on connections
                 }
                 nodes.append(node_map[node.name])
 
-        # Create links (only for nodes that exist)
-        links = []
+        # Create edges (only for nodes that exist)
+        edge_list = []
         seen_edges = set()
         for edge in edges:
             if edge.source in node_map and edge.target in node_map:
@@ -360,14 +373,14 @@ class GraphAPI:
                 edge_pair = tuple(sorted([edge.source, edge.target]))
                 if edge_pair not in seen_edges:
                     seen_edges.add(edge_pair)
-                    links.append({
-                        "source": edge.source,
-                        "target": edge.target,
+                    edge_list.append({
+                        "from": edge.source,
+                        "to": edge.target,
                     })
 
         return {
             "nodes": nodes,
-            "links": links,
+            "edges": edge_list,
         }
 
 
