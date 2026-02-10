@@ -1,33 +1,72 @@
 {
   "issues_by_file": {
-    "bravo.py": [
+    "authenticate_user function": [
       {
-        "file": "bravo.py",
-        "severity": "medium",
+        "file": "authenticate_user function",
+        "severity": "high",
+        "description": "Hardcoded credentials"
+      }
+    ],
+    "hash_password function": [
+      {
+        "file": "hash_password function",
+        "severity": "critical",
+        "description": "Weak hash function"
+      }
+    ],
+    "Session class": [
+      {
+        "file": "Session class",
+        "severity": "low",
         "description": "Manual review recommended"
       }
     ],
-    "charlie.py": [
+    "database.py": [
       {
-        "file": "charlie.py",
-        "severity": "medium",
-        "description": "Manual review recommended"
+        "file": "database.py",
+        "severity": "high",
+        "description": "SQL injection risk"
+      },
+      {
+        "file": "database.py",
+        "severity": "high",
+        "description": "SQL injection risk"
+      },
+      {
+        "file": "database.py",
+        "severity": "high",
+        "description": "SQL injection risk"
       }
     ],
-    "alpha.py": [
+    "utility_helpers.py": [
       {
-        "file": "alpha.py",
+        "file": "utility_helpers.py",
+        "severity": "high",
+        "description": "No zero division check"
+      },
+      {
+        "file": "utility_helpers.py",
         "severity": "medium",
-        "description": "Manual review recommended"
+        "description": "No error handling"
+      },
+      {
+        "file": "utility_helpers.py",
+        "severity": "low",
+        "description": "Inefficient iteration"
+      },
+      {
+        "file": "utility_helpers.py",
+        "severity": "medium",
+        "description": "No input validation"
       }
     ]
   },
   "summary": {
     "total_files": 3,
-    "files_with_issues": 3,
-    "total_issues": 3,
-    "critical_issues": 0,
-    "high_issues": 0,
+    "files_with_issues": 5,
+    "total_issues": 10,
+    "critical_issues": 1,
+    "high_issues": 5,
     "batches_completed": 1,
     "total_batches": 1
   }

@@ -16,7 +16,8 @@
       "Bash(git rm:*)",
       "Bash(powershell -Command \"Remove-Item -Recurse -Force ''C:\\\\Users\\\\User\\\\GitHub\\\\Tech-Venture-\\\\web''\")",
       "Bash(npx tsc:*)",
-      "Bash(python analyze_demo.py:*)"
+      "Bash(python analyze_demo.py:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

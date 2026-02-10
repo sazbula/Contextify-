@@ -418,11 +418,12 @@ async def rlm_status():
 class FileInsightsRequest(BaseModel):
     repo_name: str
     file_path: str
+    issue_description: str | None = None
 
 
 @app.post("/rlm/insights")
 async def generate_file_insights(request: FileInsightsRequest):
-    """Generate AI insights and advice for a specific file."""
+    """Generate AI insights and advice for a specific file or issue."""
     import openai
     
     api_key = os.getenv("OPENAI_API_KEY")
@@ -457,28 +458,50 @@ async def generate_file_insights(request: FileInsightsRequest):
     # Call OpenAI for insights
     try:
         client = openai.OpenAI(api_key=api_key)
-        
-        issues_context = ""
-        if existing_issues:
-            issues_context = "\n\nExisting detected issues:\n"
-            for issue in existing_issues[:5]:  # Limit to 5 most relevant
-                issues_context += f"- {issue.get('severity', 'unknown').upper()}: {issue.get('description', 'No description')}\n"
-        
-        prompt = f"""Analyze this code file and provide concise, actionable insights and advice.
+
+        # Build prompt based on whether we're analyzing a specific issue or the whole file
+        if request.issue_description:
+            # Focus on specific issue
+            prompt = f"""Analyze this specific code issue and provide targeted insights and advice.
+
+File: {request.file_path}
+
+Specific Issue: {request.issue_description}
+
+Code:
+```
+{file_content[:3000]}
+```
+
+Provide a concise response in plain text using simple formatting:
+1. Root cause (1-2 sentences)
+2. Recommended fix (2-3 steps using numbered list)
+3. Prevention (1 sentence)
+
+Use only basic markdown: numbered lists (1. 2. 3.) and bullet points (- item). Keep it simple and readable."""
+        else:
+            # General file analysis
+            issues_context = ""
+            if existing_issues:
+                issues_context = "\n\nExisting detected issues:\n"
+                for issue in existing_issues[:5]:  # Limit to 5 most relevant
+                    issues_context += f"- {issue.get('severity', 'unknown').upper()}: {issue.get('description', 'No description')}\n"
+
+            prompt = f"""Analyze this code file and provide concise, actionable insights and advice.
 
 File: {request.file_path}
 {issues_context}
 Code:
 ```
-{file_content[:3000]}  
+{file_content[:3000]}
 ```
 
-Provide:
+Provide a concise response in plain text using simple formatting:
 1. Brief summary (1-2 sentences)
-2. Key improvements (2-3 bullet points, max 10 words each)
+2. Key improvements (2-3 bullet points using - format)
 3. Priority action (1 sentence)
 
-Be concise and specific."""
+Use only basic markdown: numbered lists (1. 2. 3.) and bullet points (- item). Keep it simple and readable."""
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",

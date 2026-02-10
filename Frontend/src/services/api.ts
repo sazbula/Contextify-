@@ -119,15 +119,23 @@ export async function healthCheck(): Promise<boolean> {
 
 /**
  * Generate AI insights for a specific file
+ * @param repoName Name of the repository
+ * @param filePath Path to the file
+ * @param issueDescription Optional specific issue description to focus insights on
  */
 export async function generateFileInsights(
   repoName: string,
-  filePath: string
+  filePath: string,
+  issueDescription?: string
 ): Promise<{ insights: string; issues_count: number }> {
   const response = await fetch(`${API_BASE}/rlm/insights`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo_name: repoName, file_path: filePath }),
+    body: JSON.stringify({
+      repo_name: repoName,
+      file_path: filePath,
+      issue_description: issueDescription
+    }),
   });
 
   if (!response.ok) {
