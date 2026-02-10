@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from . import crud, models, schemas
 from .database import Base, SessionLocal, engine, get_db
 from .demo_data import build_demo_result
-from .review_engine import run_analysis, summarize_counts
+from .ingest import run_pipeline
+from .rlm_client import analyze_repo
 
 
 def ensure_schema() -> None:
@@ -81,7 +82,14 @@ def analyze(
         progress="queued",
     )
 
-    background_tasks.add_task(_process_analysis_task, review_id, repo_name, str(payload.url))
+    background_tasks.add_task(
+        _process_analysis_task,
+        review_id,
+        repo_name,
+        str(payload.url),
+        bool(payload.force),
+        bool(payload.demo),
+    )
 
     return schemas.AnalyzeResponse(
         review_id=review_id,
@@ -179,7 +187,7 @@ def get_review(review_id: str, db: Session = Depends(get_db)):
     return payload
 
 
-def _process_analysis_task(review_id: str, repo_name: str, repo_url: str):
+def _process_analysis_task(review_id: str, repo_name: str, repo_url: str, force: bool, demo: bool):
     db = SessionLocal()
     review = None
     try:
@@ -188,8 +196,28 @@ def _process_analysis_task(review_id: str, repo_name: str, repo_url: str):
             return
 
         crud.mark_running(db, review, progress="running analysis")
-        result = run_analysis(repo_name=repo_name, repo_url=repo_url)
-        node_count, edge_count = summarize_counts(result)
+
+        if demo or repo_name in {"demo", "contextify-demo"}:
+            nodes, edges, issues, counts = build_demo_result()
+            result = {
+                "repo_name": repo_name,
+                "graph": {"nodes": nodes, "edges": edges, "severity_counts": counts},
+                "issues": issues,
+                "meta": {"engine": "demo", "notes": "Demo dataset"},
+            }
+            node_count = len(nodes)
+            edge_count = len(edges)
+        else:
+            pipeline_result = run_pipeline(repo_url, force=force)
+            result = analyze_repo(
+                repo_name=repo_name,
+                graph_path=pipeline_result["graph_path"],
+                tags_path=pipeline_result["tags_path"],
+                repo_path=pipeline_result["repo_path"],
+            )
+            node_count = len(result.get("graph", {}).get("nodes", []))
+            edge_count = len(result.get("graph", {}).get("edges", []))
+
         crud.mark_done(db, review, result, node_count=node_count, edge_count=edge_count, progress="completed")
     except Exception as exc:  # pragma: no cover - defensive logging
         if review:
@@ -203,5 +231,7 @@ def _repo_name_from_url(url: str) -> str:
     path = parsed.path.strip("/")
     if not path or path.count("/") < 1:
         raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
-    org_repo = "/".join(path.split("/")[:2])
-    return org_repo
+    owner, repo = path.split("/")[:2]
+    # Use a path-safe repo identifier for URLs (avoid embedded '/')
+    safe_name = f"{owner}__{repo}"
+    return safe_name

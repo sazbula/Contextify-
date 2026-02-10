@@ -9,6 +9,7 @@ FastAPI + SQLite backend that mirrors the React frontend contract: analyze a rep
 - `GET /repos` lists analyzed repos (always includes `contextify-demo`).
 - `GET /api/reviews/{id}` exposes raw job status/result if needed.
 - Permissive CORS; SQLite persistence; background tasks keep the workflow.
+- For real repos, the legacy `src/pipeline.py` (GitHub download + graph build) now runs automatically; its output is passed through an RLM client seam (currently stubbed) before being stored/served.
 
 ## Quickstart
 1) Install deps  
