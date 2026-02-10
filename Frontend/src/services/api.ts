@@ -41,20 +41,22 @@ export interface RepoInfo {
 }
 
 /**
- * Analyze a GitHub repository
+ * Analyze a GitHub repository with full RLM scanning
  * @param url GitHub repository URL
  * @param force Force re-download and re-analysis
+ * @param runRlm Whether to run RLM analysis (default: true)
  */
 export async function analyzeRepo(
   url: string,
-  force: boolean = false
+  force: boolean = false,
+  runRlm: boolean = true
 ): Promise<AnalyzeResponse> {
-  const response = await fetch(`${API_BASE}/analyze`, {
+  const response = await fetch(`${API_BASE}/analyze-full`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ url, force }),
+    body: JSON.stringify({ url, force, run_rlm: runRlm }),
   });
 
   if (!response.ok) {
@@ -128,4 +130,31 @@ export async function deleteRepo(repoName: string): Promise<void> {
     const error = await response.json().catch(() => ({ detail: "Unknown error" }));
     throw new Error(error.detail || `Failed to delete: ${response.status}`);
   }
+}
+
+/**
+ * Analyze a local repository with full RLM scanning
+ * @param repoName Name of the local repository in repos/ folder
+ * @param force Force re-analysis
+ * @param runRlm Whether to run RLM analysis (default: true)
+ */
+export async function analyzeLocalRepo(
+  repoName: string,
+  force: boolean = false,
+  runRlm: boolean = true
+): Promise<AnalyzeResponse> {
+  const response = await fetch(`${API_BASE}/analyze-local`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ repo_name: repoName, force, run_rlm: runRlm }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(error.detail || `Analysis failed: ${response.status}`);
+  }
+
+  return response.json();
 }

@@ -523,7 +523,7 @@ const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps
                 fill="none"
                 stroke={isHighlighted ? "hsl(252, 100%, 68%)" : "hsl(210, 30%, 40%)"}
                 strokeWidth={isHighlighted ? 2 : 0.75}
-                opacity={hoveredNode ? (isHighlighted ? 0.9 : 0.08) : 0.25}
+                opacity={hoveredNode ? (isHighlighted ? 0.9 : 0) : 0}
                 markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
                 filter={isHighlighted ? "url(#glow)" : undefined}
                 style={{ transition: "opacity 0.2s, stroke 0.2s, stroke-width 0.2s" }}
@@ -610,13 +610,16 @@ const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps
               transform: "translate(-50%, -100%)",
             }}
           >
-            <p className="text-xs font-mono text-foreground truncate">{hoveredNode.path}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <p className="text-xs font-mono text-foreground truncate">{hoveredNode.path.split("/").pop()}</p>
+            <div className="flex items-center gap-2 mt-0.5">
               <span className={`w-2 h-2 rounded-full severity-dot-${hoveredNode.severity}`} />
               <span className="text-xs text-muted-foreground">
                 {hoveredNode.issues} issue{hoveredNode.issues !== 1 ? "s" : ""}
               </span>
             </div>
+            {hoveredNode.folder !== "root" && (
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">{hoveredNode.folder}/</p>
+            )}
             {hoveredNode.topIssue && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate">{hoveredNode.topIssue}</p>
             )}

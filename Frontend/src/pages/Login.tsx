@@ -1,11 +1,107 @@
 import { motion } from "framer-motion";
-import { Eye } from "lucide-react";
+import { Eye, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import logo from "@/assets/contextify-logo.png";
+import { useState, useRef, useEffect } from "react";
+import { analyzeLocalRepo } from "@/services/api";
+
+const API_BASE = "http://localhost:8000";
 
 const Login = () => {
   const navigate = useNavigate();
+  const [analyzingDemo, setAnalyzingDemo] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const startLiveDemo = async () => {
+    setAnalyzingDemo(true);
+
+    try {
+      const repoName = "demo_repo";
+
+      // Connect to SSE first and wait for connection to establish
+      const sseReady = new Promise<void>((resolve) => {
+        connectSSE(repoName, resolve);
+      });
+
+      // Wait for SSE to be ready
+      await sseReady;
+
+      // Small delay to ensure SSE connection is fully established
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Trigger actual RLM analysis on demo_repo - events will now be captured
+      await analyzeLocalRepo(repoName, false, true);
+
+      // Navigation happens when batch_start event fires
+    } catch (err) {
+      console.error("Demo analysis failed:", err);
+      setAnalyzingDemo(false);
+      // Close SSE on error
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    }
+  };
+
+  const connectSSE = (repoName: string, onConnected?: () => void) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    eventSourceRef.current = new EventSource(`${API_BASE}/rlm/stream/${repoName}`);
+
+    eventSourceRef.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("SSE Progress:", data);
+
+        // Notify that connection is ready
+        if (data.type === "connected" && onConnected) {
+          onConnected();
+        }
+
+        // Navigate to dashboard when batch starts (RLM is actively working)
+        if (data.type === "batch_start") {
+          setTimeout(() => {
+            localStorage.setItem("currentRepo", repoName);
+            localStorage.setItem("rlmInProgress", "true");
+            navigate("/dashboard");
+          }, 800);
+        }
+
+        // Mark RLM as complete
+        if (data.type === "analysis_complete") {
+          localStorage.setItem("rlmInProgress", "false");
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing SSE data:", error);
+      }
+    };
+
+    eventSourceRef.current.onerror = (error) => {
+      console.error("SSE error:", error);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background relative overflow-hidden">
@@ -69,7 +165,26 @@ const Login = () => {
             We only request read access to repos you select.
           </p>
 
-          <div className="mt-6 pt-5 border-t border-border">
+          <div className="mt-6 pt-5 border-t border-border flex flex-col gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full gap-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+              onClick={startLiveDemo}
+              disabled={analyzingDemo}
+            >
+              {analyzingDemo ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4" />
+                  Try Live Demo
+                </>
+              )}
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -77,7 +192,7 @@ const Login = () => {
               onClick={() => navigate("/dashboard")}
             >
               <Eye className="w-4 h-4" />
-              View demo
+              View pre-analyzed demo
             </Button>
           </div>
         </div>

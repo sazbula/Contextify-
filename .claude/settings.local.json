@@ -15,7 +15,8 @@
       "Bash(taskkill /F /FI \"IMAGENAME eq python.exe\")",
       "Bash(git rm:*)",
       "Bash(powershell -Command \"Remove-Item -Recurse -Force ''C:\\\\Users\\\\User\\\\GitHub\\\\Tech-Venture-\\\\web''\")",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(python analyze_demo.py:*)"
     ]
   }
 }
