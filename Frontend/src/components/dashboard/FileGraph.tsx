@@ -266,10 +266,10 @@ function computeLayout(nodes: FileNode[], collapsedClusters: Set<string>, cluste
 const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps) => {
   const [zoom, setZoom] = useState(1);
   const [hoveredNode, setHoveredNode] = useState<FileNode | null>(null);
-  const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(
-    new Set()
-  );
+  const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
   const svgContainerRef = useRef<HTMLDivElement>(null);
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
 
   const toggleCluster = useCallback((id: string) => {
     setCollapsedClusters(prev => {
@@ -296,6 +296,49 @@ const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Click-drag to pan the canvas (scroll container)
+  useEffect(() => {
+    const container = svgContainerRef.current;
+    if (!container) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      isPanningRef.current = true;
+      panStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: container.scrollLeft,
+        scrollTop: container.scrollTop,
+      };
+      container.style.cursor = "grabbing";
+      e.preventDefault();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPanningRef.current || !panStartRef.current) return;
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      container.scrollLeft = panStartRef.current.scrollLeft - dx;
+      container.scrollTop = panStartRef.current.scrollTop - dy;
+    };
+
+    const stopPan = () => {
+      if (!isPanningRef.current) return;
+      isPanningRef.current = false;
+      panStartRef.current = null;
+      container.style.cursor = "";
+    };
+
+    container.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", stopPan);
+    return () => {
+      container.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", stopPan);
+    };
   }, []);
 
   // Generate dynamic cluster definitions from nodes
@@ -376,9 +419,9 @@ const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps
       <GraphLegend counts={severityCounts} />
 
       {/* Graph canvas */}
-      <div 
+      <div
         ref={svgContainerRef}
-        className="w-full h-full overflow-auto cursor-grab active:cursor-grabbing" 
+        className="w-full h-full overflow-auto cursor-grab active:cursor-grabbing"
         style={{ touchAction: "none" }}
       >
         <svg
@@ -567,14 +610,15 @@ const FileGraph = ({ nodes, edges, onNodeClick, selectedNodeId }: FileGraphProps
             if (!pos) return null;
             const isSelected = selectedNodeId === node.id;
             const isHovered = hoveredNode?.id === node.id;
+            const hasIssues = (node.issues || 0) > 0 && node.severity !== "green" && node.severity !== "gray";
 
             return (
               <g
                 key={node.id}
-                onClick={() => onNodeClick(node)}
+                onClick={hasIssues ? () => onNodeClick(node) : undefined}
                 onMouseEnter={() => setHoveredNode(node)}
                 onMouseLeave={() => setHoveredNode(null)}
-                className="cursor-pointer"
+                className={hasIssues ? "cursor-pointer" : "cursor-not-allowed opacity-60"}
               >
                 {(isSelected || isHovered) && (
                   <circle
